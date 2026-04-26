@@ -3,7 +3,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database.models import SessionLocal, User, Payment, PaymentScreenshot, PaymentRequest
 from bot.keyboards.main_menu import get_subscription_menu_keyboard
-from bot.config import ALIPAY_AMOUNT_OPTIONS, ADMIN_ID
+from bot.config import ALIPAY_AMOUNT_OPTIONS, ADMIN_ID, BUFF_ACCOUNT_CREDENTIALS
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -696,6 +696,33 @@ async def admin_confirm_wechat_handler(update: Update, context: ContextTypes.DEF
                 f"<b>Next step:</b> Send QR code as next message",
                 parse_mode="HTML"
             )
+            
+            # 📤 СРАЗУ отправить данные аккаунта админу
+            import random
+            account_id = random.randint(1, 10)
+            account_creds = BUFF_ACCOUNT_CREDENTIALS.get(account_id, {})
+            
+            if account_creds:
+                admin_account_msg = (
+                    f"📤 <b>Payment Confirmed - Account Credentials</b>\n\n"
+                    f"User: <b>{user.first_name}</b> (ID: {user.telegram_id})\n"
+                    f"Amount: <b>¥{payment_request.unique_amount}</b>\n"
+                    f"Request ID: <code>{request_id}</code>\n\n"
+                    f"<b>Buff.163 Account #{account_id}:</b>\n"
+                    f"🔐 Login: <code>{account_creds['login']}</code>\n"
+                    f"🔑 Password: <code>{account_creds['password']}</code>\n\n"
+                    f"<i>Now send QR code to complete the process.</i>"
+                )
+                
+                try:
+                    await context.bot.send_message(
+                        chat_id=ADMIN_ID,
+                        text=admin_account_msg,
+                        parse_mode="HTML"
+                    )
+                    logger.info(f"📤 Account credentials sent to admin immediately: Account #{account_id}")
+                except Exception as e:
+                    logger.error(f"❌ Failed to send account credentials to admin: {e}")
             
             # Отправить уведомления для пользователя
             context.user_data['pending_qr_user_id'] = user.id

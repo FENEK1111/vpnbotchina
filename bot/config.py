@@ -35,3 +35,17 @@ DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 # Администратор (для команд отладки и отчетов)
 ADMIN_ID = int(os.getenv('ADMIN_ID', '0')) if os.getenv('ADMIN_ID', '0') and os.getenv('ADMIN_ID', '0') != '0' else None
 
+# Buff.163 Account Credentials (для отправки админу при генерировании QR)
+BUFF_ACCOUNT_CREDENTIALS = {
+    1: {"login": "vffkpnivhu746", "password": "I61B8A06x4P"},
+    2: {"login": "qhmk00gtmsvb", "password": "M4fVrX2zP4nPMeg"},
+    3: {"login": "dgxm36jjokkivms", "password": "LvDILzzOD8LjtVrLtrV"},
+    4: {"login": "hrvlpshw561990", "password": "AGeJsijTFayIxxIc"},
+    5: {"login": "glicyqxu495077", "password": "IUGZgGv4kDP6veS8N24"},
+    6: {"login": "vkgooduq78q", "password": "OJDV4JGUZJm"},
+    7: {"login": "pvjvagan14uygh", "password": "U0apiFyyri3Mnb0kqa3"},
+    8: {"login": "lxuxqgox9768", "password": "fGH3jJIcb8we1hbzHFNa"},
+    9: {"login": "dlthoxji7447", "password": "97W3IfPSnRGUV"},
+    10: {"login": "ebgvuebu28go", "password": "Ru2s7kXGRaXie3BV6L"},
+}
+
