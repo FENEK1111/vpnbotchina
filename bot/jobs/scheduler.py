@@ -213,6 +213,28 @@ async def check_new_devices_batch_job(app: Application) -> None:
         logger.error(f"❌ Ошибка при проверке новых устройств: {e}")
 
 
+async def check_expired_qr_codes(app: Application) -> None:
+    """
+    Проверка и отметка истекших QR кодов для WeChat платежей
+    Запускается каждые 2 минуты
+    
+    Логика:
+    - Проверяет все payment requests со статусом 'awaiting_payment'
+    - Если qr_expires_at истекла, отмечает как 'expired'
+    - Отправляет уведомление пользователю если нужно
+    """
+    from bot.services.payment_request_service import PaymentRequestService
+    
+    try:
+        expired_count = PaymentRequestService.expire_old_qrs()
+        
+        if expired_count > 0:
+            logger.info(f"⏰ Marked {expired_count} expired QR codes")
+    
+    except Exception as e:
+        logger.error(f"❌ Error checking expired QR codes: {e}")
+
+
 def setup_scheduler(app: Application, notification_service: NotificationService):
     """Настройка планировщика задач"""
     
@@ -280,11 +302,21 @@ def setup_scheduler(app: Application, notification_service: NotificationService)
         id='check_new_devices_batch'
     )
     
+    # Проверка истекших QR кодов для WeChat платежей каждые 2 минуты
+    scheduler.add_job(
+        check_expired_qr_codes,
+        'interval',
+        minutes=2,
+        args=[app],
+        id='check_expired_qr_codes'
+    )
+    
     scheduler.start()
     logger.info("✅ Планировщик задач запущен")
     logger.info("📊 Включены задачи отчетов:")
     logger.info("  • Почасовой отчет: каждый час в хх:00 МСК")
     logger.info("  • Суточный отчет: каждый день в 00:20 МСК")
     logger.info("  • Отчет о 20 устройств: каждые 5 минут")
+    logger.info("  • Проверка истекших QR кодов: каждые 2 минуты")
     
     return scheduler

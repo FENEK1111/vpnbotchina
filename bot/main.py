@@ -390,9 +390,33 @@ async def handle_callbacks(update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             db.close()
     elif callback_data == "add_balance":
-        # New handler for selecting Alipay amount
-        from bot.handlers.account import add_balance_handler
-        await add_balance_handler(update, context)
+        # New handler for WeChat top-up (direct to amounts)
+        from bot.handlers.account import wechat_amount_handler
+        await wechat_amount_handler(update, context)
+    elif callback_data.startswith("wechat_initiate_"):
+        # User initiated WeChat payment
+        from bot.handlers.account import wechat_initiate_payment_handler
+        await wechat_initiate_payment_handler(update, context)
+    elif callback_data.startswith("admin_confirm_wechat_"):
+        # Admin confirmed WeChat payment
+        from bot.handlers.account import admin_confirm_wechat_handler
+        await admin_confirm_wechat_handler(update, context)
+    elif callback_data.startswith("admin_decline_wechat_"):
+        # Admin declined WeChat payment
+        from bot.handlers.account import admin_decline_wechat_handler
+        await admin_decline_wechat_handler(update, context)
+    elif callback_data.startswith("user_confirm_payment_"):
+        # User confirmed payment and system notifies admin
+        from bot.handlers.account import user_final_payment_confirmation
+        await user_final_payment_confirmation(update, context)
+    elif callback_data.startswith("admin_complete_payment_"):
+        # Admin completed payment after verifying balance
+        from bot.handlers.account import admin_complete_payment_handler
+        await admin_complete_payment_handler(update, context)
+    elif callback_data.startswith("admin_cancel_payment_"):
+        # Admin cancelled payment
+        from bot.handlers.account import admin_cancel_payment_handler
+        await admin_cancel_payment_handler(update, context)
     elif callback_data.startswith("alipay_amount_"):
         # Show Alipay instructions for selected amount
         from bot.handlers.account import show_alipay_instruction_handler

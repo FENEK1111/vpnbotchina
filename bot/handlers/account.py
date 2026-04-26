@@ -1,7 +1,7 @@
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from database.models import SessionLocal, User, Payment, PaymentScreenshot
+from database.models import SessionLocal, User, Payment, PaymentScreenshot, PaymentRequest
 from bot.keyboards.main_menu import get_subscription_menu_keyboard
 from bot.config import ALIPAY_AMOUNT_OPTIONS, ADMIN_ID
 from datetime import datetime
@@ -39,7 +39,7 @@ async def show_account_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         db.close()
 
 async def add_balance_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle balance top-up - select amount"""
+    """Handle balance top-up - WeChat Pay only"""
     query = update.callback_query
     await query.answer()
     
@@ -49,17 +49,17 @@ async def add_balance_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         if not user:
             return
         
-        # Create keyboard with available amounts
+        # Create keyboard with available amounts for WeChat
         keyboard = []
         for amount in ALIPAY_AMOUNT_OPTIONS:
             keyboard.append([
-                InlineKeyboardButton(f"¥{amount}", callback_data=f"alipay_amount_{amount}")
+                InlineKeyboardButton(f"🛒 ¥{amount}", callback_data=f"wechat_initiate_{amount}")
             ])
         
         keyboard.append([InlineKeyboardButton("◀️ Back", callback_data="account")])
         
         message = (
-            f"💳 <b>Top-up Balance via Alipay</b>\n\n"
+            f"🛒 <b>WeChat Pay Top-up</b>\n\n"
             f"Select amount to top-up:\n\n"
             f"Current balance: <b>{user.balance:.2f}¥</b>"
         )
@@ -168,11 +168,18 @@ Screenshot received → Admin reviews → Your balance updated (2-5 minutes)
 
 
 async def handle_payment_screenshot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle payment screenshot upload from user"""
+    """Handle payment screenshot upload from user or QR from admin"""
     
     if not update.message.photo:
-        await update.message.reply_text("❌ Please send a photo of the payment receipt")
+        await update.message.reply_text("❌ Please send a photo")
         return
+    
+    # Check if this is admin sending QR code for WeChat payment
+    if update.effective_user.id == ADMIN_ID and 'pending_qr_request_id' in context.user_data:
+        await admin_send_qr_handler(update, context)
+        return
+    
+    # Regular user payment screenshot handling
     
     db = SessionLocal()
     try:
@@ -490,5 +497,595 @@ async def check_payment_status_handler(update: Update, context: ContextTypes.DEF
             ])
         )
         
+    finally:
+        db.close()
+
+
+# ==================== NEW WeChat Payment Flow ====================
+
+async def payment_method_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Пользователь выбирает метод оплаты"""
+    query = update.callback_query
+    await query.answer()
+    
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
+        if not user:
+            return
+        
+        keyboard = [
+            [InlineKeyboardButton("💳 Alipay", callback_data="payment_method_alipay")],
+            [InlineKeyboardButton("🛒 WeChat Pay", callback_data="payment_method_wechat")],
+            [InlineKeyboardButton("◀️ Back", callback_data="account")]
+        ]
+        
+        message = (
+            f"💰 <b>Select Payment Method</b>\n\n"
+            f"Current balance: <b>{user.balance:.2f}¥</b>\n\n"
+            f"Choose your preferred payment option:"
+        )
+        
+        await query.edit_message_text(
+            message,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        
+    finally:
+        db.close()
+
+
+async def wechat_amount_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Пользователь выбирает сумму для WeChat платежа"""
+    query = update.callback_query
+    await query.answer()
+    
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
+        if not user:
+            return
+        
+        # Create keyboard with available amounts
+        keyboard = []
+        for amount in ALIPAY_AMOUNT_OPTIONS:
+            keyboard.append([
+                InlineKeyboardButton(f"¥{amount}", callback_data=f"wechat_initiate_{amount}")
+            ])
+        
+        keyboard.append([InlineKeyboardButton("◀️ Back", callback_data="payment_method")])
+        
+        message = (
+            f"🛒 <b>WeChat Pay Top-up</b>\n\n"
+            f"Select amount to top-up:\n\n"
+            f"Current balance: <b>{user.balance:.2f}¥</b>"
+        )
+        
+        await query.edit_message_text(
+            message,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        
+    finally:
+        db.close()
+
+
+async def wechat_initiate_payment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Инициировать WeChat платеж - админ должен быть уведомлен"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Извлечь сумму из callback_data
+    amount_str = query.data.replace("wechat_initiate_", "")
+    amount = int(amount_str)
+    
+    db = SessionLocal()
+    try:
+        from bot.services.payment_request_service import PaymentRequestService
+        
+        user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
+        if not user:
+            await query.edit_message_text("❌ User not found")
+            return
+        
+        # Создать payment request
+        payment_request = PaymentRequestService.create_request(user.id, amount)
+        if not payment_request:
+            await query.edit_message_text("❌ Failed to create payment request. Try again.")
+            return
+        
+        # Показать пользователю сообщение что ждем QR
+        await query.edit_message_text(
+            f"✅ <b>Payment Request Created</b>\n\n"
+            f"Amount: <b>¥{amount}</b>\n"
+            f"Unique amount to pay: <b>¥{payment_request.unique_amount}</b>\n\n"
+            f"⏳ <b>Administrator is sending QR code for payment...</b>\n\n"
+            f"We'lll send you QR code in a couple of minutes.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏠 Main Menu", callback_data="start")]
+            ])
+        )
+        
+        # Отправить уведомление админу
+        user_info = PaymentRequestService.get_user_info(user.id)
+        admin_message_text = (
+            f"💳 <b>New WeChat Payment Request</b>\n\n"
+            f"👤 User: <b>{user_info['first_name']}</b>\n"
+            f"🆔 Username: @{user_info['username']}\n"
+            f"📞 User ID: <code>{user_info['telegram_id']}</code>\n"
+            f"💰 Requested amount: <b>¥{amount}</b>\n"
+            f"🎯 Unique amount: <b>¥{payment_request.unique_amount}</b>\n"
+            f"📅 Time: {datetime.utcnow().strftime('%d.%m.%Y %H:%M:%S')}\n\n"
+            f"<b>Action:</b> Confirm or decline below"
+        )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "✅ Confirm & Send QR",
+                    callback_data=f"admin_confirm_wechat_{payment_request.id}"
+                ),
+                InlineKeyboardButton(
+                    "❌ Decline",
+                    callback_data=f"admin_decline_wechat_{payment_request.id}"
+                )
+            ]
+        ]
+        
+        if ADMIN_ID:
+            try:
+                admin_msg = await context.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=admin_message_text,
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                
+                # Сохранить admin message ID
+                payment_request.admin_message_id = admin_msg.message_id
+                db.commit()
+                
+                logger.info(f"✅ Admin notified for WeChat payment: {payment_request.id}")
+            except Exception as e:
+                logger.error(f"❌ Failed to notify admin: {e}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error initiating WeChat payment: {e}")
+        await query.edit_message_text("❌ An error occurred. Please try again.")
+    finally:
+        db.close()
+
+
+async def admin_confirm_wechat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Админ подтверждает WeChat платежи"""
+    query = update.callback_query
+    await query.answer()
+    
+    if update.effective_user.id != ADMIN_ID:
+        await query.answer("❌ Access denied", show_alert=True)
+        return
+    
+    request_id = int(query.data.replace("admin_confirm_wechat_", ""))
+    
+    db = SessionLocal()
+    try:
+        from bot.services.payment_request_service import PaymentRequestService
+        
+        # Подтвердить запрос
+        success = PaymentRequestService.confirm_by_admin(request_id, query.message.message_id)
+        if not success:
+            await query.edit_message_text("❌ Payment request not found")
+            return
+        
+        # Получить информацию о payment request
+        payment_request = db.query(PaymentRequest).filter(
+            PaymentRequest.id == request_id
+        ).first()
+        
+        if payment_request:
+            user = db.query(User).filter(User.id == payment_request.user_id).first()
+            
+            # Обновить сообщение админу
+            await query.edit_message_text(
+                f"✅ <b>WeChat Payment Confirmed</b>\n\n"
+                f"User: <b>{user.first_name}</b>\n"
+                f"Amount: <b>¥{payment_request.unique_amount}</b>\n\n"
+                f"<b>Next step:</b> Send QR code as next message",
+                parse_mode="HTML"
+            )
+            
+            # Отправить уведомления для пользователя
+            context.user_data['pending_qr_user_id'] = user.id
+            context.user_data['pending_qr_request_id'] = request_id
+            context.user_data['pending_qr_amount'] = payment_request.unique_amount
+            
+            logger.info(f"✅ Admin confirmed WeChat payment {request_id}")
+    
+    except Exception as e:
+        logger.error(f"❌ Error in admin_confirm: {e}")
+        await query.edit_message_text("❌ An error occurred")
+    finally:
+        db.close()
+
+
+async def admin_decline_wechat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Админ отклоняет WeChat платеж"""
+    query = update.callback_query
+    await query.answer()
+    
+    if update.effective_user.id != ADMIN_ID:
+        await query.answer("❌ Access denied", show_alert=True)
+        return
+    
+    request_id = int(query.data.replace("admin_decline_wechat_", ""))
+    
+    db = SessionLocal()
+    try:
+        from bot.services.payment_request_service import PaymentRequestService
+        
+        # Отклонить запрос
+        success = PaymentRequestService.decline_by_admin(request_id)
+        if not success:
+            await query.edit_message_text("❌ Payment request not found")
+            return
+        
+        payment_request = db.query(PaymentRequest).filter(
+            PaymentRequest.id == request_id
+        ).first()
+        
+        if payment_request:
+            user = db.query(User).filter(User.id == payment_request.user_id).first()
+            
+            # Уведомить пользователя
+            try:
+                await context.bot.send_message(
+                    chat_id=user.telegram_id,
+                    text="❌ <b>Payment Request Declined</b>\n\n"
+                         "Your payment request has been declined by the administrator.\n"
+                         "Please try again later or contact support.",
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify user: {e}")
+            
+            # Обновить сообщение админу
+            await query.edit_message_text(
+                f"❌ <b>WeChat Payment Declined</b>\n\n"
+                f"User: <b>{user.first_name}</b>\n"
+                f"Amount: <b>¥{payment_request.unique_amount}</b>\n\n"
+                f"User has been notified.",
+                parse_mode="HTML"
+            )
+            
+            logger.info(f"✅ Admin declined WeChat payment {request_id}")
+    
+    except Exception as e:
+        logger.error(f"❌ Error in admin_decline: {e}")
+        await query.edit_message_text("❌ An error occurred")
+    finally:
+        db.close()
+
+
+async def admin_send_qr_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Админ отправляет QR для платежа.
+    
+    Флоу:
+    1. Админ подтверждает платеж
+    2. Следующее сообщение с фото считается QR кодом
+    3. Система отправляет QR пользователю с инструкциями
+    """
+    
+    # Проверим что это фото/документ
+    if not update.message:
+        return
+    
+    if not (update.message.photo or update.message.document):
+        await update.message.reply_text("⚠️ Please send a QR code photo or document")
+        return
+    
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Access denied")
+        return
+    
+    # Проверяем есть ли pending payment request
+    if 'pending_qr_request_id' not in context.user_data:
+        await update.message.reply_text(
+            "⚠️ No pending payment request\n\n"
+            "Use: Confirm payment → Send QR"
+        )
+        return
+    
+    from bot.services.payment_request_service import PaymentRequestService
+    
+    request_id = context.user_data['pending_qr_request_id']
+    user_id = context.user_data.get('pending_qr_user_id')
+    amount = context.user_data.get('pending_qr_amount')
+    
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            await update.message.reply_text("❌ User not found")
+            return
+        
+        # Get QR file ID
+        if update.message.photo:
+            qr_file_id = update.message.photo[-1].file_id
+        else:
+            qr_file_id = update.message.document.file_id
+        
+        # ОТправить QR пользователю
+        qr_message_text = (
+            f"🛒 <b>WeChat Payment QR Code</b>\n\n"
+            f"💰 <b>Amount to pay: ¥{amount}</b>\n\n"
+            f"⏰ <b>QR Valid for 15 minutes</b>\n\n"
+            f"After payment, click confirm button to complete."
+        )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "✅ Payment Confirmed",
+                    callback_data=f"user_confirm_payment_{request_id}"
+                )
+            ]
+        ]
+        
+        # Отправить QR пользователю
+        qr_msg = await context.bot.send_photo(
+            chat_id=user.telegram_id,
+            photo=qr_file_id,
+            caption=qr_message_text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        
+        # Обновить payment request
+        payment_request = db.query(PaymentRequest).filter(
+            PaymentRequest.id == request_id
+        ).first()
+        
+        if payment_request:
+            success = PaymentRequestService.set_qr_sent(request_id, qr_msg.message_id)
+            
+            if success:
+                await update.message.reply_text(
+                    f"✅ <b>QR Sent to User</b>\n\n"
+                    f"User: <b>{user.first_name}</b>\n"
+                    f"Amount: <b>¥{amount}</b>\n\n"
+                    f"User has been sent QR code and will confirm when paid.",
+                    parse_mode="HTML"
+                )
+                
+                # Очистить context
+                context.user_data.pop('pending_qr_request_id', None)
+                context.user_data.pop('pending_qr_user_id', None)
+                context.user_data.pop('pending_qr_amount', None)
+                
+                logger.info(f"✅ QR sent to user {user_id} for payment {request_id}")
+            else:
+                await update.message.reply_text("❌ Failed to update payment request")
+    
+    except Exception as e:
+        logger.error(f"❌ Error sending QR: {e}")
+        await update.message.reply_text(f"❌ Error: {str(e)[:50]}")
+    finally:
+        db.close()
+
+
+async def user_final_payment_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Пользователь подтверждает что оплатил в WeChat.
+    Админ должен вручную проверить баланс на Buff.163
+    """
+    query = update.callback_query
+    await query.answer()
+    
+    request_id = int(query.data.replace("user_confirm_payment_", ""))
+    
+    db = SessionLocal()
+    try:
+        from bot.services.payment_request_service import PaymentRequestService
+        
+        payment_request = db.query(PaymentRequest).filter(
+            PaymentRequest.id == request_id
+        ).first()
+        
+        if not payment_request:
+            await query.edit_message_text("❌ Payment request not found")
+            return
+        
+        # Проверить истек ли QR
+        if payment_request.qr_expires_at and datetime.utcnow() > payment_request.qr_expires_at:
+            await query.edit_message_caption(
+                f"❌ <b>QR Code Expired</b>\n\n"
+                f"The QR code is no longer valid (15 minutes have passed).\n\n"
+                f"If you've already paid, click the button below to notify admin.\n"
+                f"If not, please try again later.",
+                parse_mode="HTML"
+            )
+            return
+        
+        # Показать пользователю сообщение "ожидаем подтверждение админа"
+        await query.edit_message_caption(
+            f"⏳ <b>Awaiting Admin Confirmation</b>\n\n"
+            f"Amount: <b>¥{payment_request.unique_amount}</b>\n\n"
+            f"Your payment is being verified.\n"
+            f"Confirmation within 2-5 minutes.",
+            parse_mode="HTML"
+        )
+        
+        # Отправить уведомление админу
+        user = db.query(User).filter(User.id == payment_request.user_id).first()
+        
+        admin_message_text = (
+            f"✅ <b>Payment Confirmation from User</b>\n\n"
+            f"👤 User: <b>{user.first_name}</b>\n"
+            f"🆔 ID: <code>{user.telegram_id}</code>\n"
+            f"💰 Amount: <b>¥{payment_request.unique_amount}</b>\n"
+            f"📅 Time: {datetime.utcnow().strftime('%d.%m.%Y %H:%M:%S')}\n\n"
+            f"<b>Action:</b> Verify balance on Buff.163 and check the buttons below"
+        )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "✅ Verified & Complete",
+                    callback_data=f"admin_complete_payment_{request_id}"
+                ),
+                InlineKeyboardButton(
+                    "❌ Not Received",
+                    callback_data=f"admin_cancel_payment_{request_id}"
+                )
+            ]
+        ]
+        
+        if ADMIN_ID:
+            try:
+                await context.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=admin_message_text,
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                
+                logger.info(f"✅ Payment confirmation notification sent to admin for request {request_id}")
+            except Exception as e:
+                logger.error(f"Failed to notify admin: {e}")
+    
+    except Exception as e:
+        logger.error(f"❌ Error in user payment confirmation: {e}")
+        await query.edit_message_caption(f"❌ An error occurred")
+    finally:
+        db.close()
+
+
+async def admin_complete_payment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Админ завершает платеж после проверки баланса"""
+    query = update.callback_query
+    await query.answer()
+    
+    if update.effective_user.id != ADMIN_ID:
+        await query.answer("❌ Access denied", show_alert=True)
+        return
+    
+    request_id = int(query.data.replace("admin_complete_payment_", ""))
+    
+    db = SessionLocal()
+    try:
+        from bot.services.payment_request_service import PaymentRequestService
+        
+        # Завершить платеж
+        success = PaymentRequestService.complete_payment(request_id)
+        if not success:
+            await query.edit_message_text("❌ Payment request not found")
+            return
+        
+        payment_request = db.query(PaymentRequest).filter(
+            PaymentRequest.id == request_id
+        ).first()
+        
+        if payment_request:
+            user = db.query(User).filter(User.id == payment_request.user_id).first()
+            
+            # Обновить баланс пользователя
+            user.balance += payment_request.unique_amount
+            db.commit()
+            
+            # Отправить уведомление пользователю
+            try:
+                await context.bot.send_message(
+                    chat_id=user.telegram_id,
+                    text=f"✅ <b>Payment Confirmed!</b>\n\n"
+                         f"Amount: <b>¥{payment_request.unique_amount}</b>\n"
+                         f"New balance: <b>¥{user.balance:.2f}</b>\n\n"
+                         f"Thank you for topping up!",
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🏠 Main Menu", callback_data="start")]
+                    ])
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify user: {e}")
+            
+            # Обновить сообщение админу
+            await query.edit_message_text(
+                f"✅ <b>Payment Completed</b>\n\n"
+                f"User: <b>{user.first_name}</b>\n"
+                f"Amount: <b>¥{payment_request.unique_amount}</b>\n"
+                f"New balance: <b>¥{user.balance:.2f}</b>\n\n"
+                f"Payment has been processed.",
+                parse_mode="HTML"
+            )
+            
+            logger.info(f"✅ Payment {request_id} completed. User balance updated to {user.balance}")
+    
+    except Exception as e:
+        logger.error(f"❌ Error completing payment: {e}")
+        await query.edit_message_text("❌ An error occurred")
+    finally:
+        db.close()
+
+
+async def admin_cancel_payment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Админ отменяет платеж если деньги не поступили"""
+    query = update.callback_query
+    await query.answer()
+    
+    if update.effective_user.id != ADMIN_ID:
+        await query.answer("❌ Access denied", show_alert=True)
+        return
+    
+    request_id = int(query.data.replace("admin_cancel_payment_", ""))
+    
+    db = SessionLocal()
+    try:
+        payment_request = db.query(PaymentRequest).filter(
+            PaymentRequest.id == request_id
+        ).first()
+        
+        if not payment_request:
+            await query.edit_message_text("❌ Payment request not found")
+            return
+        
+        user = db.query(User).filter(User.id == payment_request.user_id).first()
+        
+        # Отметить payment request как отмененный
+        payment_request.status = 'expired'
+        db.commit()
+        
+        # Отправить уведомление пользователю
+        try:
+            await context.bot.send_message(
+                chat_id=user.telegram_id,
+                text="❌ <b>Payment Not Received</b>\n\n"
+                     "The payment for your order was not received.\n"
+                     "Please try again or contact support.",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🏠 Main Menu", callback_data="start")]
+                ])
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify user: {e}")
+        
+        # Обновить сообщение админу
+        await query.edit_message_text(
+            f"❌ <b>Payment Cancelled</b>\n\n"
+            f"User: <b>{user.first_name}</b>\n"
+            f"Amount: <b>¥{payment_request.unique_amount}</b>\n\n"
+            f"User has been notified.",
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"❌ Payment {request_id} cancelled")
+    
+    except Exception as e:
+        logger.error(f"❌ Error cancelling payment: {e}")
+        await query.edit_message_text("❌ An error occurred")
     finally:
         db.close()

@@ -28,13 +28,13 @@ def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
 
 
 def get_subscription_menu_keyboard() -> InlineKeyboardMarkup:
-    """Payment/Top-up menu (Alipay)"""
+    """Payment/Top-up menu - WeChat Pay only"""
     keyboard = [
-        [InlineKeyboardButton("💳 Top-up ¥10", callback_data="add_balance")],
-        [InlineKeyboardButton("💳 Top-up ¥20", callback_data="add_balance")],
-        [InlineKeyboardButton("💳 Top-up ¥50", callback_data="add_balance")],
-        [InlineKeyboardButton("💳 Top-up ¥100", callback_data="add_balance")],
-        [InlineKeyboardButton("💳 Top-up ¥200", callback_data="add_balance")],
+        [InlineKeyboardButton("🛒 ¥10", callback_data="wechat_initiate_10")],
+        [InlineKeyboardButton("🛒 ¥20", callback_data="wechat_initiate_20")],
+        [InlineKeyboardButton("🛒 ¥50", callback_data="wechat_initiate_50")],
+        [InlineKeyboardButton("🛒 ¥100", callback_data="wechat_initiate_100")],
+        [InlineKeyboardButton("🛒 ¥200", callback_data="wechat_initiate_200")],
         [InlineKeyboardButton("❌ Cancel", callback_data="cancel")],
     ]
     return InlineKeyboardMarkup(keyboard)

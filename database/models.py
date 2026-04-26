@@ -129,6 +129,26 @@ class PaymentScreenshot(Base):
     user = relationship("User")
 
 
+class PaymentRequest(Base):
+    """Модель запроса на пополнение баланса с уникальной суммой"""
+    __tablename__ = "payment_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    amount_requested = Column(Float)  # Изначально запрошенная сумма (рубли)
+    unique_amount = Column(Float)  # Уникальная сумма с +/- смещением (±1 юань)
+    status = Column(String, default='awaiting_admin')  # awaiting_admin, declined, admin_confirmed, awaiting_payment, completed, expired
+    admin_message_id = Column(Integer, nullable=True)  # message_id уведомления админу
+    user_message_id = Column(Integer, nullable=True)  # message_id для пользователя с QR
+    user_confirmation_button_id = Column(Integer, nullable=True)  # callback_query_id финальной кнопки
+    qr_expires_at = Column(DateTime, nullable=True)  # Когда QR становится недействительным
+    created_at = Column(DateTime, default=datetime.utcnow)
+    admin_confirmed_at = Column(DateTime, nullable=True)
+    payment_confirmed_at = Column(DateTime, nullable=True)
+    
+    user = relationship("User")
+
+
 # Инициализация БД
 engine = create_engine(
     DATABASE_URL,
