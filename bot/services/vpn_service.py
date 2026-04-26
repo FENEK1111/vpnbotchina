@@ -88,7 +88,7 @@ class MarzbanService:
         """Удалить пользователя из Marzban"""
         try:
             # Сначала пробуем удалить с обычным именем
-            url = f"{self.base_url}/api/users/{username}"
+            url = f"{self.base_url}/api/user/{username}"
             logger.info(f"🔄 Удаляю пользователя {username} из Marzban ({url})")
             
             response = requests.delete(
@@ -107,7 +107,7 @@ class MarzbanService:
                 logger.info(f"⚠️ Пользователь {username} не найден, пробую Wordvpn({username})")
                 
                 formatted_username = f"Wordvpn({username})"
-                url_formatted = f"{self.base_url}/api/users/{formatted_username}"
+                url_formatted = f"{self.base_url}/api/user/{formatted_username}"
                 logger.info(f"🔄 Пробую удалить как {formatted_username}")
                 
                 response_formatted = requests.delete(
