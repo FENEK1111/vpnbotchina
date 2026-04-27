@@ -25,7 +25,7 @@ from database.models import Base, engine
 # Logging configuration
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.DEBUG if DEBUG else logging.INFO
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 

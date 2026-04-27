@@ -17,8 +17,8 @@ MARZBAN_URL = os.getenv('MARZBAN_URL', 'http://localhost:8000')
 MARZBAN_ADMIN_TOKEN = os.getenv('MARZBAN_ADMIN_TOKEN', '')
 
 # VPN Settings (China Edition - CNY)
-VPN_PRICE_PER_MONTH = 20.0  # 20 yuan per month per device
-VPN_PRICE_PER_DAY = 0.67  # ≈ 0.67 yuan per day per device (20 / 30)
+VPN_PRICE_PER_MONTH = 18.0  # 18 yuan per month per device
+VPN_PRICE_PER_DAY = 0.60  # ≈ 0.60 yuan per day per device (18 / 30)
 VPN_NOTIFICATION_DAYS = 3  # Notify 3 days before subscription expires
 VPN_LOW_BALANCE_DAYS = 3  # Reserve days for low balance check
 VPN_MAX_DEVICES = 6  # max devices per user
