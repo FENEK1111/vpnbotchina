@@ -4,8 +4,8 @@ from bot.config import VPN_PRICE_PER_DAY
 
 logger = logging.getLogger(__name__)
 
-# Calculate referral bonus: 7 days VPN, rounded to whole number
-REFERRAL_BONUS = round(7 * VPN_PRICE_PER_DAY)  # 7 days (1 week) ≈ 5¥
+# Referral bonus per invited friend
+REFERRAL_BONUS = 10.0  # 10 yuan per invited friend
 
 
 class ReferralService:

@@ -1,5 +1,5 @@
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database.models import SessionLocal, User
 from bot.keyboards.main_menu import get_main_menu_keyboard
@@ -38,7 +38,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             welcome_text = (
                 f"👋 Hi, <b>{user_data.first_name}</b>!\n\n"
                 f"Welcome to <b>WordVPN</b>, a fast and affordable service for your security!\n\n"
-                f"Click the button below to create a profile and get 1 week for free."
+                f"🎁 Get <b>3 days FREE VPN</b> when you create a profile!"
             )
             
             # If this is a referral link, add bonus info
@@ -51,21 +51,13 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             callback_data = f"create_profile_ref_{referrer_id}" if referrer_id else "create_profile"
             
             inline = InlineKeyboardMarkup([
-                [InlineKeyboardButton("Create Profile", callback_data=callback_data)]
+                [InlineKeyboardButton("✅ Create Profile", callback_data=callback_data)]
             ])
-            reply = ReplyKeyboardMarkup(
-                [[KeyboardButton("Create Profile")]],
-                resize_keyboard=True,
-            )
             
             await update.message.reply_text(
                 welcome_text,
-                reply_markup=reply,
+                reply_markup=inline,
                 parse_mode="HTML"
-            )
-            await update.message.reply_text(
-                "Or click the button below:",
-                reply_markup=inline
             )
             
             return
@@ -100,8 +92,8 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         welcome_text = (
             f"👋 Hi, <b>{user_data.first_name}</b>!\n\n"
             f"Welcome to <b>WordVPN</b>, a fast and affordable service for your security!\n\n"
-            f"Add your first device and get <b>1 week for free</b> (35¥).\n\n"
-            f"<b>Price:</b> 5¥ per day per device\n"
+            f"🎁 <b>You've received 3 days FREE VPN</b> (2¥)\n\n"
+            f"<b>Price:</b> 18¥ per month (0.60¥ per day) per device\n"
             f"<b>Max devices:</b> 6\n"
             f"Current balance: <b>{user.balance:.2f}¥</b>"
         )

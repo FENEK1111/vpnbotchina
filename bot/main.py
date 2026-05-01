@@ -218,9 +218,6 @@ async def handle_message(update, context: ContextTypes.DEFAULT_TYPE):
         await show_settings_handler(update, context)
     elif text == "🎁 Referral Program":
         await show_referral_program_handler(update, context)
-    elif text == "Создать профиль" or text == "Create Profile":
-        # Handler for both variants (Russian and English)
-        await handle_create_profile_button(update, context)
     elif context.user_data.get('awaiting_device_name'):
         await handle_device_name_input(update, context)
 
@@ -276,73 +273,6 @@ async def back_to_devices_handler(update, context: ContextTypes.DEFAULT_TYPE):
         db.close()
 
 
-async def handle_create_profile_button(update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handler for 'Create Profile' button from menu"""
-    user_data = update.effective_user
-    db = SessionLocal()
-    
-    try:
-        user = db.query(User).filter(User.telegram_id == user_data.id).first()
-        if not user:
-            user = User(
-                telegram_id=user_data.id,
-                username=user_data.username,
-                first_name=user_data.first_name,
-                balance=5.0  # bonus on creation (1 week VPN)
-            )
-            db.add(user)
-            db.commit()
-            logger.info(f"✅ Profile created with ¥5 bonus: {user_data.id}")
-            
-            # Referral program handling
-            referrer_id = context.user_data.get('referrer_id') if context.user_data else None
-            if referrer_id:
-                try:
-                    referrer = db.query(User).filter(User.id == referrer_id).first()
-                    if referrer:
-                        result = ReferralService.create_referral(referrer_id, user.id)
-                        if result:
-                            logger.info(f"🎁 Referral program activated: user_id={user.id} from referrer_id={referrer_id}")
-                            await update.message.reply_text(
-                                f"🎉 <b>Thanks for registering via {referrer.first_name}'s referral!</b>\n\n"
-                                f"You both received bonuses!",
-                                parse_mode="HTML"
-                            )
-                        else:
-                            logger.warning(f"⚠️ Failed to create referral for user_id={user.id}")
-                except Exception as e:
-                    logger.error(f"❌ Error while processing referral bonus: {e}")
-        else:
-            # ⚠️ Profile already exists, this is an abuse attempt
-            logger.warning(
-                f"⚠️ ABUSE ATTEMPT: User {user_data.id} ({user_data.first_name}) "
-                f"trying to create profile but profile already exists. "
-                f"Balance: ¥{user.balance:.2f}"
-            )
-            await update.message.reply_text(
-                "ℹ️ You already have a profile!\n\n"
-                "Click 💰 My Balance to see your account"
-            )
-            return
-        
-        # Create general subscription for user
-        SubscriptionService.create_subscription(user.id)
-        
-        # Send welcome message with menu
-        welcome_text = (
-            f"👋 <b>Welcome, {user_data.first_name}!</b>\n\n"
-            f"✨ <b>You've received a ¥5 bonus</b> (1 week free VPN)\n\n"
-            f"💰 Your balance: <b>¥{user.balance:.2f}</b>"
-        )
-        
-        await update.message.reply_text(
-            welcome_text,
-            reply_markup=get_main_menu_keyboard(),
-            parse_mode="HTML"
-        )
-        
-    finally:
-        db.close()
 
 
 async def handle_callbacks(update, context: ContextTypes.DEFAULT_TYPE):
@@ -364,7 +294,7 @@ async def handle_callbacks(update, context: ContextTypes.DEFAULT_TYPE):
                     telegram_id=user_data.id,
                     username=user_data.username,
                     first_name=user_data.first_name,
-                    balance=5.0
+                    balance=2.0  # 3 days free VPN (signup bonus)
                 )
                 db.add(new_user)
                 db.commit()
@@ -374,7 +304,7 @@ async def handle_callbacks(update, context: ContextTypes.DEFAULT_TYPE):
                 
                 welcome = (
                     f"👋 <b>Welcome, {user_data.first_name}!</b>\n\n"
-                    f"✨ <b>You've received a ¥5 bonus</b> (1 week free VPN)\n\n"
+                    f"✨ <b>You've received a ¥2.0 bonus</b> (3 days free VPN)\n\n"
                     f"💰 Your balance: <b>¥{new_user.balance:.2f}</b>\n\n"
                     f"Now you can add a device or top-up your account."
                 )
@@ -794,7 +724,7 @@ async def handle_settings_selection(update, context: ContextTypes.DEFAULT_TYPE):
             "• Automatic top-up\n"
             "• Multiple configurations\n"
             "• 24/7 support\n\n"
-            "💳 <b>Price:</b> 20¥ per month (0.67¥ per day) per device\n"
+            "💳 <b>Price:</b> 18¥ per month (0.60¥ per day) per device\n"
         )
     else:
         text = "❌ Unknown option"
@@ -877,7 +807,7 @@ async def show_help_handler(update, context: ContextTypes.DEFAULT_TYPE):
         "📱 <b>My Devices</b> - manage VPN devices\n"
         "💰 <b>My Balance</b> - view and top-up balance\n"
         "➕ <b>Add Device</b> - add new device (max 6)\n\n"
-        "<b>Price:</b> 20¥ per month (0.67¥ per day) per device\n"
+        "<b>Price:</b> 18¥ per month (0.60¥ per day) per device\n"
         "<b>Reminder:</b> You'll get notified 3 days before subscription expires\n\n"
 
         "📖 <a href=\"https://www.worddvpn.tech/instruction.html\"><b>Installation instructions</b></a>\n\n"

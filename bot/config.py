@@ -26,8 +26,34 @@ VPN_LOCATION = 'China'  # location
 
 # Alipay Payment (Instructions only - no direct API integration)
 ALIPAY_ENABLED = os.getenv('ALIPAY_ENABLED', 'True').lower() == 'true'
-ALIPAY_AMOUNT_OPTIONS = [int(x.strip()) for x in os.getenv('ALIPAY_AMOUNT_OPTIONS', '10,20,50,100,200').split(',')]
+ALIPAY_AMOUNT_OPTIONS = [int(x.strip()) for x in os.getenv('ALIPAY_AMOUNT_OPTIONS', '30,50,100,150,200').split(',')]
 ALIPAY_PAYMENT_METHOD = 'manual_instruction'  # Инструкции, а не автоматические платежи
+
+# Sign-up Bonus (3 days free VPN)
+SIGNUP_BONUS = 2.0  # ≈ 3 days * 0.60¥/day
+
+# Top-up Bonus System
+def get_topup_bonus(amount: int) -> float:
+    """
+    Calculate bonus for top-up amount.
+    Bonuses: 50¥ +10%, 100¥ +15%, 150¥ +20%, 200¥ +25%
+    
+    Args:
+        amount: Top-up amount in CNY
+        
+    Returns:
+        Bonus amount in CNY
+    """
+    bonus_rates = {
+        50: 0.10,   # +10%
+        100: 0.15,  # +15%
+        150: 0.20,  # +20%
+        200: 0.25,  # +25%
+    }
+    
+    if amount in bonus_rates:
+        return round(amount * bonus_rates[amount], 2)
+    return 0.0
 
 # Режим отладки
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'

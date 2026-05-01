@@ -3,7 +3,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database.models import SessionLocal, User, Payment, PaymentScreenshot, PaymentRequest
 from bot.keyboards.main_menu import get_subscription_menu_keyboard
-from bot.config import ALIPAY_AMOUNT_OPTIONS, ADMIN_ID, BUFF_ACCOUNT_CREDENTIALS
+from bot.config import ALIPAY_AMOUNT_OPTIONS, ADMIN_ID, BUFF_ACCOUNT_CREDENTIALS, get_topup_bonus
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -52,8 +52,15 @@ async def add_balance_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Create keyboard with available amounts for WeChat
         keyboard = []
         for amount in ALIPAY_AMOUNT_OPTIONS:
+            bonus = get_topup_bonus(amount)
+            if bonus > 0:
+                bonus_percent = int((bonus / amount) * 100)
+                button_text = f"🛒 ¥{amount} (+{bonus_percent}% bonus)"
+            else:
+                button_text = f"🛒 ¥{amount}"
+            
             keyboard.append([
-                InlineKeyboardButton(f"🛒 ¥{amount}", callback_data=f"wechat_initiate_{amount}")
+                InlineKeyboardButton(button_text, callback_data=f"wechat_initiate_{amount}")
             ])
         
         keyboard.append([InlineKeyboardButton("◀️ Back", callback_data="account")])
@@ -61,6 +68,11 @@ async def add_balance_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         message = (
             f"🛒 <b>WeChat Pay Top-up</b>\n\n"
             f"Select amount to top-up:\n\n"
+            f"<b>Bonus system:</b>\n"
+            f"• 50¥ → +10% bonus\n"
+            f"• 100¥ → +15% bonus\n"
+            f"• 150¥ → +20% bonus\n"
+            f"• 200¥ → +25% bonus\n\n"
             f"Current balance: <b>{user.balance:.2f}¥</b>"
         )
         
@@ -92,11 +104,17 @@ async def show_alipay_instruction_handler(update: Update, context: ContextTypes.
         # Store amount in context for later use when photo is sent
         context.user_data['payment_amount'] = amount_cny
         
+        # Calculate bonus
+        bonus = get_topup_bonus(amount_cny)
+        bonus_line = f"<b>🎁 Bonus:</b> +¥{bonus} ({int((bonus/amount_cny)*100)}%)\n" if bonus > 0 else ""
+        
         # Create instruction with admin Steam ID
         instruction_text = f"""
 ✅ <b>Steam Top-up Instructions</b>
 
 <b>Amount to top-up:</b> <code>¥{amount_cny}</code>
+{bonus_line}
+<b>Total you'll receive:</b> <code>¥{amount_cny + bonus}</code>
 <b>Your current balance:</b> <code>{user.balance:.2f}¥</code>
 
 ━━━━━━━━━━━━━━━━━━━
@@ -397,6 +415,14 @@ async def finalize_payment_handler(update: Update, context: ContextTypes.DEFAULT
         # Update user balance
         user.balance += topup_amount
         
+        # Calculate and add top-up bonus
+        bonus = get_topup_bonus(int(topup_amount))
+        if bonus > 0:
+            user.balance += bonus
+            bonus_text = f"🎁 <b>Bonus:</b> +¥{bonus}\n"
+        else:
+            bonus_text = ""
+        
         # Mark screenshot as approved
         screenshot.status = 'approved'
         screenshot.processed_at = datetime.utcnow()
@@ -420,6 +446,7 @@ async def finalize_payment_handler(update: Update, context: ContextTypes.DEFAULT
                 text=(
                     f"✅ <b>Payment Approved & Completed!</b>\n\n"
                     f"💰 Amount: <b>¥{topup_amount}</b>\n"
+                    f"{bonus_text}"
                     f"✓ Status: Confirmed\n\n"
                     f"Your balance: <b>¥{user.balance:.2f}</b>\n\n"
                     f"🎉 You can now use VPN!"
@@ -437,6 +464,7 @@ async def finalize_payment_handler(update: Update, context: ContextTypes.DEFAULT
             f"✅ <b>Payment Completed!</b>\n\n"
             f"User: {user.first_name} ({user.telegram_id})\n"
             f"Top-up Amount: ¥{topup_amount}\n"
+            f"{bonus_text}"
             f"New Balance: ¥{user.balance:.2f}\n\n"
             f"User has been notified",
             parse_mode="HTML"
@@ -1021,6 +1049,15 @@ async def admin_complete_payment_handler(update: Update, context: ContextTypes.D
             
             # Обновить баланс пользователя
             user.balance += payment_request.unique_amount
+            
+            # Calculate and add top-up bonus
+            bonus = get_topup_bonus(int(payment_request.unique_amount))
+            if bonus > 0:
+                user.balance += bonus
+                bonus_text = f"🎁 <b>Bonus:</b> +¥{bonus}\n"
+            else:
+                bonus_text = ""
+            
             db.commit()
             
             # Отправить уведомление пользователю
@@ -1029,6 +1066,7 @@ async def admin_complete_payment_handler(update: Update, context: ContextTypes.D
                     chat_id=user.telegram_id,
                     text=f"✅ <b>Payment Confirmed!</b>\n\n"
                          f"Amount: <b>¥{payment_request.unique_amount}</b>\n"
+                         f"{bonus_text}"
                          f"New balance: <b>¥{user.balance:.2f}</b>\n\n"
                          f"Thank you for topping up!",
                     parse_mode="HTML",
@@ -1044,6 +1082,7 @@ async def admin_complete_payment_handler(update: Update, context: ContextTypes.D
                 f"✅ <b>Payment Completed</b>\n\n"
                 f"User: <b>{user.first_name}</b>\n"
                 f"Amount: <b>¥{payment_request.unique_amount}</b>\n"
+                f"{bonus_text}"
                 f"New balance: <b>¥{user.balance:.2f}</b>\n\n"
                 f"Payment has been processed.",
                 parse_mode="HTML"
