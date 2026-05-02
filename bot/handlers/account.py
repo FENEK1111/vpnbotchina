@@ -1048,8 +1048,8 @@ async def admin_complete_payment_handler(update: Update, context: ContextTypes.D
             # Обновить баланс пользователя
             user.balance += payment_request.unique_amount
             
-            # Calculate and add top-up bonus
-            bonus = get_topup_bonus(int(payment_request.unique_amount))
+            # Calculate and add top-up bonus based on REQUESTED amount (not unique_amount)
+            bonus = get_topup_bonus(int(payment_request.amount_requested))
             if bonus > 0:
                 user.balance += bonus
                 bonus_text = f"🎁 <b>YOU GET EXTRA:</b> +¥{bonus} absolutely FREE!\n"
