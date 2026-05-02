@@ -35,7 +35,7 @@ def get_subscription_menu_keyboard() -> InlineKeyboardMarkup:
     for amount in ALIPAY_AMOUNT_OPTIONS:
         bonus = get_topup_bonus(amount)
         if bonus > 0:
-            button_text = f"🛒 ¥{amount} 🎁+¥{bonus}"
+            button_text = f"🛒 ¥{amount} +🎁¥{bonus}"
         else:
             button_text = f"🛒 ¥{amount}"
         
