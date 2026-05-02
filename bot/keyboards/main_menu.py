@@ -28,15 +28,22 @@ def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
 
 
 def get_subscription_menu_keyboard() -> InlineKeyboardMarkup:
-    """Payment/Top-up menu - WeChat Pay only"""
-    keyboard = [
-        [InlineKeyboardButton("🛒 ¥10", callback_data="wechat_initiate_10")],
-        [InlineKeyboardButton("🛒 ¥20", callback_data="wechat_initiate_20")],
-        [InlineKeyboardButton("🛒 ¥50", callback_data="wechat_initiate_50")],
-        [InlineKeyboardButton("🛒 ¥100", callback_data="wechat_initiate_100")],
-        [InlineKeyboardButton("🛒 ¥200", callback_data="wechat_initiate_200")],
-        [InlineKeyboardButton("❌ Cancel", callback_data="cancel")],
-    ]
+    """Payment/Top-up menu - WeChat Pay with bonuses"""
+    from bot.config import ALIPAY_AMOUNT_OPTIONS, get_topup_bonus
+    
+    keyboard = []
+    for amount in ALIPAY_AMOUNT_OPTIONS:
+        bonus = get_topup_bonus(amount)
+        if bonus > 0:
+            button_text = f"🛒 ¥{amount} 🎁+¥{bonus}"
+        else:
+            button_text = f"🛒 ¥{amount}"
+        
+        keyboard.append([
+            InlineKeyboardButton(button_text, callback_data=f"wechat_initiate_{amount}")
+        ])
+    
+    keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="cancel")])
     return InlineKeyboardMarkup(keyboard)
 
 

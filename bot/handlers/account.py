@@ -54,8 +54,7 @@ async def add_balance_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         for amount in ALIPAY_AMOUNT_OPTIONS:
             bonus = get_topup_bonus(amount)
             if bonus > 0:
-                bonus_percent = int((bonus / amount) * 100)
-                button_text = f"🛒 ¥{amount} (+{bonus_percent}% bonus)"
+                button_text = f"🛒 ¥{amount} 🎁+¥{bonus} EXTRA"
             else:
                 button_text = f"🛒 ¥{amount}"
             
@@ -67,12 +66,12 @@ async def add_balance_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         message = (
             f"🛒 <b>WeChat Pay Top-up</b>\n\n"
-            f"Select amount to top-up:\n\n"
-            f"<b>Bonus system:</b>\n"
-            f"• 50¥ → +10% bonus\n"
-            f"• 100¥ → +15% bonus\n"
-            f"• 150¥ → +20% bonus\n"
-            f"• 200¥ → +25% bonus\n\n"
+            f"Select amount to top-up and GET BONUS:\n\n"
+            f"<b>🎁 BONUS FOR YOU:</b>\n"
+            f"• Buy 50¥ → Get +5¥ EXTRA\n"
+            f"• Buy 100¥ → Get +15¥ EXTRA\n"
+            f"• Buy 150¥ → Get +30¥ EXTRA\n"
+            f"• Buy 200¥ → Get +50¥ EXTRA\n\n"
             f"Current balance: <b>{user.balance:.2f}¥</b>"
         )
         
@@ -106,7 +105,7 @@ async def show_alipay_instruction_handler(update: Update, context: ContextTypes.
         
         # Calculate bonus
         bonus = get_topup_bonus(amount_cny)
-        bonus_line = f"<b>🎁 Bonus:</b> +¥{bonus} ({int((bonus/amount_cny)*100)}%)\n" if bonus > 0 else ""
+        bonus_line = f"<b>🎁 YOU GET BONUS:</b> +¥{bonus} absolutely FREE!\n" if bonus > 0 else ""
         
         # Create instruction with admin Steam ID
         instruction_text = f"""
@@ -419,7 +418,7 @@ async def finalize_payment_handler(update: Update, context: ContextTypes.DEFAULT
         bonus = get_topup_bonus(int(topup_amount))
         if bonus > 0:
             user.balance += bonus
-            bonus_text = f"🎁 <b>Bonus:</b> +¥{bonus}\n"
+            bonus_text = f"🎁 <b>YOU GET EXTRA:</b> +¥{bonus} absolutely FREE!\n"
         else:
             bonus_text = ""
         
@@ -445,11 +444,10 @@ async def finalize_payment_handler(update: Update, context: ContextTypes.DEFAULT
                 chat_id=user.telegram_id,
                 text=(
                     f"✅ <b>Payment Approved & Completed!</b>\n\n"
-                    f"💰 Amount: <b>¥{topup_amount}</b>\n"
+                    f"� You paid: <b>¥{topup_amount}</b>\n"
                     f"{bonus_text}"
-                    f"✓ Status: Confirmed\n\n"
-                    f"Your balance: <b>¥{user.balance:.2f}</b>\n\n"
-                    f"🎉 You can now use VPN!"
+                    f"💰 Total in balance: <b>¥{user.balance:.2f}</b>\n\n"
+                    f"🎉 Ready to use VPN!"
                 ),
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup([
@@ -463,10 +461,10 @@ async def finalize_payment_handler(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text(
             f"✅ <b>Payment Completed!</b>\n\n"
             f"User: {user.first_name} ({user.telegram_id})\n"
-            f"Top-up Amount: ¥{topup_amount}\n"
+            f"Received: ¥{topup_amount}\n"
             f"{bonus_text}"
             f"New Balance: ¥{user.balance:.2f}\n\n"
-            f"User has been notified",
+            f"✓ User has been notified",
             parse_mode="HTML"
         )
         
@@ -1054,7 +1052,7 @@ async def admin_complete_payment_handler(update: Update, context: ContextTypes.D
             bonus = get_topup_bonus(int(payment_request.unique_amount))
             if bonus > 0:
                 user.balance += bonus
-                bonus_text = f"🎁 <b>Bonus:</b> +¥{bonus}\n"
+                bonus_text = f"🎁 <b>YOU GET EXTRA:</b> +¥{bonus} absolutely FREE!\n"
             else:
                 bonus_text = ""
             
@@ -1080,11 +1078,11 @@ async def admin_complete_payment_handler(update: Update, context: ContextTypes.D
             # Обновить сообщение админу
             await query.edit_message_text(
                 f"✅ <b>Payment Completed</b>\n\n"
-                f"User: <b>{user.first_name}</b>\n"
-                f"Amount: <b>¥{payment_request.unique_amount}</b>\n"
+                f"👤 User: <b>{user.first_name}</b>\n"
+                f"💳 They paid: <b>¥{payment_request.unique_amount}</b>\n"
                 f"{bonus_text}"
-                f"New balance: <b>¥{user.balance:.2f}</b>\n\n"
-                f"Payment has been processed.",
+                f"💰 New balance: <b>¥{user.balance:.2f}</b>\n\n"
+                f"✓ Successfully processed",
                 parse_mode="HTML"
             )
             
